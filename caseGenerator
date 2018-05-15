@@ -1,0 +1,155 @@
+#__author__='maxh'
+
+import requests
+import json
+import config
+import dbHandler
+import re
+
+class caseGenerator:
+
+    def getAPIdocRsponse(self,url):  #从url中获取到api文档的原始格式，转化为字典进行处理
+        html = requests.get(url).text
+        dict = json.loads(html)
+        return dict
+
+    def caseItemHandler(self,dict,item):  #以单个case为单位进行处理,里面只有一个方法
+        caseDetails = dict["paths"][item]
+        caseDescrip = ["serviceType", "caseDescription", "caseName", "method", "path", "parameters","response"]  # 定义一个case格式结构
+        caseDescrip[3] = item  # case名称赋值
+        method = list(caseDetails.keys())
+        caseDescrip[4] = method[0]  # case方法赋值
+        caseDescriptions = dict["paths"][item][caseDescrip[4]]
+        caseDescrip[0] = caseDescriptions["tags"][0]
+        caseDescrip[1] = caseDescriptions["summary"]
+        caseDescrip[2] = caseDescriptions["operationId"]
+        try:
+            caseDescrip[5] = caseDescriptions["parameters"]
+            #print(len(caseDescrip[5]))
+        except KeyError:
+            caseDescrip[5] = ""
+        caseDescrip[6] = caseDescriptions["responses"]["200"]
+        return caseDescrip
+
+    def definationHandler(self,dict):
+        defDetails = dict["difinitions"]
+        print(defDetails)
+
+    def getDictValue(self,item,key):
+        try:
+            value=item[key]
+        except KeyError:
+            value=""
+        return value
+
+
+    def caseItemHandlerOther(self,dict,item):  #以单个case为单位进行处理,里面有多个方法
+        caseDetails = dict["paths"][item]
+        method = list(caseDetails.keys())
+        caseList=[]
+        for i in method:
+            caseDescrip = ["serviceType", "caseDescription", "caseName", "path", "method", "parameters", "response"]
+            caseDescrip[3] = item  # case名称赋值
+            caseDescrip[4] = i     # case方法赋值
+            caseDescriptions=dict["paths"][item][caseDescrip[4]]
+            caseDescrip[0] = caseDescriptions["tags"][0]
+            caseDescrip[1] = caseDescriptions["summary"]
+            caseDescrip[2] = caseDescriptions["operationId"]
+            try:
+                caseDescrip[5] = caseDescriptions["parameters"]
+                #print(len(caseDescrip[5]))
+            except KeyError:
+                caseDescrip[5] = ""
+            caseDescrip[6] = caseDescriptions["responses"]["200"]
+            caseList.append(caseDescrip)
+        return caseList
+
+    def caseGene(self,url):        #产生case列表，没有处理para和response
+        dict = self.getAPIdocRsponse(url)
+        #print(dict.keys())
+        caseList = []
+        for item in dict["paths"]:
+            caseDetails = dict["paths"][item]
+            method = list(caseDetails.keys())
+            if len(method) == 1:
+                caseD = self.caseItemHandler(dict, item)
+                #print(caseD)
+                caseList.append(caseD)
+            else:
+                caseL = self.caseItemHandlerOther(dict, item)
+                for i in caseL:
+                    caseList.append(i)
+        #print(caseList)
+        return caseList
+
+    def defHandler(self,defDtails):   #处理一条索引的参数，转化成一个列表，列表里包含所有的参数
+        caseList=[]
+        titleList = ["type", "format", "items", "data", "example", "description"]  #在数据中处理的keys包含在这个列表中
+
+        return caseList
+
+
+    def definitionGene(self, url):  # 产生case列表，没有处理para和response
+        dict = self.getAPIdocRsponse(url)
+        #print(dict.keys())
+        caseList = []
+        for item in dict["definitions"]:   #一个item对应一条索引
+            #print(item)
+            defDetails=self.getDictValue(dict["definitions"][item],"properties")
+            print("原始数据是：")
+            print(defDetails)
+            itemList = self.defHandler(defDetails)
+            caseList.append(itemList)
+        return caseList
+
+    def paramsHandler(self,params):  #得到一个列表，列表值是字典
+        paraList=[]
+        #print(params)
+        params=re.findall(r"{.*?}",params)
+        #print(params)
+        for i in params:
+            print(i)
+            if "{" in i[1:-1]:   #判断少了一个}，加上这个
+                i=i+"}"
+            i=eval(i)
+            paraDescrip = ["name", "position", "format", "description", "required"]
+            paraDescrip[0] = self.getDictValue(i, "name")
+            paraDescrip[1] = self.getDictValue(i, "in")
+            try:
+                paraDescrip[2] = i["format"]
+            except KeyError:
+                paraDescrip[2] = self.getDictValue(i,"type")
+            paraDescrip[3] = self.getDictValue(i, "description")
+            paraDescrip[4] = self.getDictValue(i, "required")
+            paraList.append(paraDescrip)
+        return paraList
+
+    def parasGene(self,db,tableSource,tableAim):   #把原始列表中的parameter拆解出来 放在新的表格中
+        conn, cursor = db.connDatabase()
+        #print("SELECT id,parameters FROM %s;"%tableSource)   #写死了，如果有需要可以变更该函数
+        sessions = db.sqlExecute(cursor,"SELECT id,parameters FROM %s;"%tableSource)
+        for i in sessions:
+            parameterDetails = i[1]
+            paraList=self.paramsHandler(parameterDetails)
+            for j in paraList:
+                j.insert(0,i[0])
+                j="("+str(j)[1:-1]+")"
+                db.insertToTable(cursor,tableAim,j)
+        db.databaseClose(conn,cursor)
+
+    def inserCaseListIntoDB(self,caseList,db,table):  #把测试用例插入的数据库中进行管理
+        conn, cursor = db.connDatabase()
+        for i in caseList:
+            i[-1] = str(i[-1])
+            i[-2] = str(i[-2])
+            i = "(" + str(i)[1:-1] + ")"
+            db.insertToTable(cursor, table, i)
+        db.databaseClose(conn, cursor)
+
+if __name__ == "__main__":
+    caseG=caseGenerator()
+    #caseL=caseG.caseGene(config.api_orderService)
+    db = dbHandler.dbHandler("localhost", 3306, 'root', '123456', 'test')
+    #caseG.inserCaseListIntoDB(caseL,db,config.apiTableForInsert)
+    caseG.parasGene(db,config.apiTableForSelect,config.parameterTableForInsert)
+    #defL=caseG.definitionGene(config.api_orderService)
