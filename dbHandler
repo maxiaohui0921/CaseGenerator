@@ -1,0 +1,118 @@
+#-*-coding:utf-8-*-
+#__author__='maxh'
+
+import pymysql
+import config
+
+class sqlCmdGenerator:
+
+    def sqlCmdGenerator(self, method, db, table, column, value):  # sql语句的命令自动生成器
+        '''
+        表格的增改查
+        CREATE TABLE `test`.`student` (
+          `id` INT(10) NOT NULL AUTO_INCREMENT,
+          `firstname` VARCHAR(45) NOT NULL,
+          `lastname` VARCHAR(45) NULL DEFAULT NULL,
+          `age` CHAR(1) NULL DEFAULT NULL,
+          `incom` FLOAT NULL DEFAULT NULL,
+          PRIMARY KEY (`id`));
+
+        alter table student add studentName varchar(20) not null;
+
+        数据的增删改查
+
+        '''
+        pass
+
+
+class dbHandler:  # 数据库中的基本操作，1.创建基础业务表格/case表/report表 2.访问数据库 3.存储数据case/result等
+
+    def __init__(self,url,port1,user1,pwd,db1,charset1='utf8'):
+        self.url=url
+        self.port=port1
+        self.user=user1
+        self.pwd=pwd
+        self.db=db1
+        self.charset=charset1
+
+    def connDatabase(self):  # 连接数据库，返回conn 和 cursor对象
+        conn = pymysql.connect(host=self.url, port=self.port, user=self.user, passwd=self.pwd, db=self.db,charset='utf8')
+        cursor = conn.cursor()
+        return conn, cursor
+
+    def sqlExecute(self, cursor, cmd):  # 执行sql语句，并返回记录
+        cursor.execute(cmd)
+        sessionID = cursor.fetchall()
+        return sessionID
+
+    def databaseClose(self, conn, cursor):  # 关闭数据库
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+    def getDatabases(self, cursor):  # 获取数据库名称列表
+        dbs = []
+        sqlGetdbs = 'SHOW DATABASES'
+        sessions = db.sqlExecute(cursor, sqlGetdbs)
+        for i in sessions:
+            dbs.append(i[0])
+        return dbs
+
+    def getTables(self, cursor):  # 获取某个数据库中的所有表格的名称
+        table = []
+        sqlGetTable = 'SHOW TABLES'
+        sessions = db.sqlExecute(cursor, sqlGetTable)
+        for i in sessions:
+            table.append(i[0])
+        return table
+
+    def getTableStructure(self, cursor, db, table):  # 获取数据库某个表格的结构
+        sqlGetTableStructure = "select TABLE_SCHEMA,TABLE_NAME,COLUMN_NAME,COLUMN_TYPE,COLUMN_COMMENT from information_schema.columns where table_schema = '%s' and table_name = '%s'" % (
+        db, table)
+        rows = self.sqlExecute(cursor, sqlGetTableStructure)
+        return rows  # tuple类型 (('id', 'int(10)', ''), ('first_name', 'char(20)', ''), ('last_name', 'char(20)', ''), ('age', 'int(11)', ''), ('sex', 'char(1)', ''), ('income', 'float', ''))
+
+    def getTableTitle(self, tableStructure):  # 获取某个表格的title字段，返回列表
+        titleList = []
+        for i in tableStructure:
+            titleList.append(i[1])
+        return titleList
+
+    def insertToTable(self, cursor, table, record):  # record参数一个元组，包含了所有要插入的数据，table是一个完整的表结构 库名称+表名称+结构
+        # INSERT INTO Persons VALUES ('Gates', 'Bill', 'Xuanwumen 10', 'Beijing')
+        # record="('NULL'," + str(record)[1:]
+        sqlInsert = '''INSERT INTO %s VALUES %s''' % (table, record)
+        #print(sqlInsert)
+        self.sqlExecute(cursor, sqlInsert)
+
+    def createTable(self, cursor, sql):
+        cursor.execute(sql)
+
+    def getDatabaseStructure(self, cursor):  # 返回整个数据库的结构表
+        allList = []
+        dbs = self.getDatabases(cursor)
+        print(dbs)
+        for i in dbs:
+            self.__init__(self.url, self.port, self.user, self.pwd, i)
+            connA, cursorA = self.connDatabase()
+            tbs = self.getTables(cursorA)
+            for j in tbs:
+                tbStructure = self.getTableStructure(cursorA, i, j)
+                for k in tbStructure:
+                    allList.append(k)
+            self.databaseClose(connA, cursorA)
+        return allList
+
+if __name__ == "__main__":
+    db = dbHandler("localhost", 3306, 'root', '123456', 'test')
+    conn, cursor = db.connDatabase()
+    lista = db.getDatabaseStructure(cursor)
+    tb = config.relationTable  # 要写入表格的表格格式，应该放置在配置表格里，或者直接放在数据库里的配置表格中
+    count = 0
+    for i in lista:
+        if i[0] in config.expectedDatabases:
+            db.insertToTable(cursor, tb, i)
+            print("插入数据：" + str(i))
+            count += 1
+    db.databaseClose(conn, cursor)
+    print("共生成数据%d条" % count)
