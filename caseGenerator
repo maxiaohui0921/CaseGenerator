@@ -106,7 +106,7 @@ class caseGenerator:
 
     def defHandler(self,defDtails):   #处理一条索引的参数，转化成一个列表，列表里包含所有的参数
         caseList=[]
-        #print(defDtails)  #{'authed': {'type': 'integer', 'format': 'int32'}, 'walletCode': {'type': 'integer', 'format': 'int32'}}
+        #print(defDtails)  
         for key in defDtails.keys():
             value=defDtails[key]
             list=self.dictToList(value)
@@ -161,7 +161,7 @@ class caseGenerator:
 
     def insertDifinationIntoDB(self,defL,db,table): #把difination里的变量插入到数据库中
         #print("我被调用了")
-        #print(type(defL))  #['AuthStatusDTO', ['authed', 'int32', '', '', '', '', ''], ['walletCode', 'int32', '', '', '', '', '']]
+        #print(type(defL))  
         conn, cursor = db.connDatabase()
         #print(len(defL))
         for i in range(1,len(defL)):
@@ -185,7 +185,7 @@ class caseGenerator:
             if defDetails!="":
                 itemList = self.defHandler(defDetails)
                 itemList.insert(0,item)
-                caseList.append(itemList)   #['AuthStatusDTO', ['authed', 'int32', '', '', '', '', ''], ['walletCode', 'int32', '', '', '', '', '']]
+                caseList.append(itemList)   
                 print(caseList)
                 self.insertDifinationIntoDB(caseList[0],db,config.definitionTableForInsert)
         return caseList
