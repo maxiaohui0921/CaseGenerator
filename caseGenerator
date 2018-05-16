@@ -5,6 +5,7 @@ import json
 import config
 import dbHandler
 import re
+import time
 
 class caseGenerator:
 
@@ -30,10 +31,6 @@ class caseGenerator:
             caseDescrip[5] = ""
         caseDescrip[6] = caseDescriptions["responses"]["200"]
         return caseDescrip
-
-    def definationHandler(self,dict):
-        defDetails = dict["difinitions"]
-        print(defDetails)
 
     def getDictValue(self,item,key):
         try:
@@ -82,24 +79,40 @@ class caseGenerator:
         #print(caseList)
         return caseList
 
+    def refHandler(self,item):
+        if isinstance(item,dict):
+            try:
+                str1=item["$ref"][14:]
+            except KeyError:
+                str1=str(item)
+        else:
+            str1=""
+        return str1
+
+    def dictToList(self,dict):   #需要处理字典数据，把字典里的字段截取出来  单个参数字典的处理 {'type': 'integer', 'format': 'int32'}
+        #titleList = ["type", "format", "items", "data", "example", "description"]  #在数据中处理的keys包含在这个列表中
+        list=["type","description","example","ref","dataref","itemref"]
+        try:
+            list[0]=dict["format"]
+        except KeyError:
+            list[0]=self.getDictValue(dict,"type")
+        list[1] = self.getDictValue(dict,"description")
+        list[2] = self.getDictValue(dict, "example")
+        list[3] = self.getDictValue(dict, "$ref")[14:]    #'truckDriverDTO': {'$ref': '#/definitions/TruckDriverDTO'}
+        list[4] = self.getDictValue(dict,"data")
+        list[5] = self.refHandler(self.getDictValue(dict,"items"))    #'items': {'$ref': '#/definitions/PayCardDTO'}
+        #print(list)
+        return list
+
     def defHandler(self,defDtails):   #处理一条索引的参数，转化成一个列表，列表里包含所有的参数
         caseList=[]
-        titleList = ["type", "format", "items", "data", "example", "description"]  #在数据中处理的keys包含在这个列表中
-
-        return caseList
-
-
-    def definitionGene(self, url):  # 产生case列表，没有处理para和response
-        dict = self.getAPIdocRsponse(url)
-        #print(dict.keys())
-        caseList = []
-        for item in dict["definitions"]:   #一个item对应一条索引
-            #print(item)
-            defDetails=self.getDictValue(dict["definitions"][item],"properties")
-            print("原始数据是：")
-            print(defDetails)
-            itemList = self.defHandler(defDetails)
-            caseList.append(itemList)
+        #print(defDtails)  #{'authed': {'type': 'integer', 'format': 'int32'}, 'walletCode': {'type': 'integer', 'format': 'int32'}}
+        for key in defDtails.keys():
+            value=defDtails[key]
+            list=self.dictToList(value)
+            list.insert(0,key)
+            #print(list)
+            caseList.append(list)
         return caseList
 
     def paramsHandler(self,params):  #得到一个列表，列表值是字典
@@ -146,10 +159,43 @@ class caseGenerator:
             db.insertToTable(cursor, table, i)
         db.databaseClose(conn, cursor)
 
+    def insertDifinationIntoDB(self,defL,db,table): #把difination里的变量插入到数据库中
+        #print("我被调用了")
+        #print(type(defL))  #['AuthStatusDTO', ['authed', 'int32', '', '', '', '', ''], ['walletCode', 'int32', '', '', '', '', '']]
+        conn, cursor = db.connDatabase()
+        #print(len(defL))
+        for i in range(1,len(defL)):
+            #print("我也被调用了")
+            defL[i].insert(0,defL[0])
+            item="("+str(defL[i])[1:-1]+")"
+            #print(item)
+            db.insertToTable(cursor, table, item)
+        db.databaseClose(conn, cursor)
+
+    def definitionGene(self, url,db):  # 产生case列表，没有处理para和response
+        dict = self.getAPIdocRsponse(url)
+        print(dict["definitions"])
+        for item in dict["definitions"]:   #一个item对应一条索引
+            caseList=[]
+            #print(item)
+            defDetails=self.getDictValue(dict["definitions"][item],"properties")
+            #print("原始数据是：")
+            print(defDetails)
+            #time.sleep(0.5)
+            if defDetails!="":
+                itemList = self.defHandler(defDetails)
+                itemList.insert(0,item)
+                caseList.append(itemList)   #['AuthStatusDTO', ['authed', 'int32', '', '', '', '', ''], ['walletCode', 'int32', '', '', '', '', '']]
+                print(caseList)
+                self.insertDifinationIntoDB(caseList[0],db,config.definitionTableForInsert)
+        return caseList
+
 if __name__ == "__main__":
     caseG=caseGenerator()
     #caseL=caseG.caseGene(config.api_orderService)
     db = dbHandler.dbHandler("localhost", 3306, 'root', '123456', 'test')
     #caseG.inserCaseListIntoDB(caseL,db,config.apiTableForInsert)
-    caseG.parasGene(db,config.apiTableForSelect,config.parameterTableForInsert)
-    #defL=caseG.definitionGene(config.api_orderService)
+    #caseG.parasGene(db,config.apiTableForSelect,config.parameterTableForInsert)
+    defL=caseG.definitionGene(config.api_orderService,db)
+    #caseG.inserCaseListIntoDB(defL,db,config.definitionTableForInsert)
+
